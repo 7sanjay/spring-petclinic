@@ -55,7 +55,7 @@ jobs:
       # ----------------------------
       - name: SonarQube Analysis
         run: |
-          mvn sonar:sonar \
+          mvn clean verify -DskipITs sonar:sonar \
             -Dsonar.projectKey=myapp \
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
