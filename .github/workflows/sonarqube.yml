@@ -1,6 +1,7 @@
 name: SonarQube Analysis (Manual)
 
-# 🔹 Only run manually
+# 🔹 Only run manually .defaults:
+  
 on:
   workflow_dispatch:
 
