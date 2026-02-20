@@ -1,49 +1,73 @@
-name: SonarQube Analysis
+name: Spring Boot PetClinic CI/CD
 
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
   workflow_dispatch:
 
-permissions:
-  pull-requests: read  # Needed to decorate PRs
-
 jobs:
-  sonar:
-    runs-on: self-hosted
+  build-analyze-deploy:
+    runs-on: ubuntu-latest
+
     steps:
+      # 1️⃣ Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      # 1️⃣ Checkout your repository
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      # 2️⃣ Set up Java (required for Maven & SonarQube)
+      # 2️⃣ Set up Java 17
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+          cache: maven
 
-      # 3️⃣ Install Maven (optional if already on runner)
-      - name: Set up Maven
-        run: |
-          if ! command -v mvn &> /dev/null
-          then
-            sudo apt update
-            sudo apt install -y maven
-          fi
+      # 3️⃣ Build Maven project
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
 
-      # 4️⃣ Run SonarQube analysis
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@7295e71c9583053f5bf40e9d4068a0c974603ec8
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}      # PR info
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}        # SonarQube token
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}  # SonarQube server URL
+      # 4️⃣ SonarQube analysis (runs on Java 17)
+      - name: SonarQube analysis
+        uses: SonarSource/sonarqube-scan-action@v2
         with:
           args: >
             -Dsonar.projectKey=myapp
             -Dsonar.sources=.
             -Dsonar.java.binaries=target
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      # 5️⃣ Backup old JAR on EC2
+      - name: Backup old JAR on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            mkdir -p ${{ secrets.EC2_APP_DIR }}/backup
+            if ls ${{ secrets.EC2_APP_DIR }}/*.jar 1> /dev/null 2>&1; then
+              mv ${{ secrets.EC2_APP_DIR }}/*.jar ${{ secrets.EC2_APP_DIR }}/backup/
+            fi
+
+      # 6️⃣ Copy new JAR to EC2
+      - name: Copy JAR to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          source: "target/*.jar"
+          target: ${{ secrets.EC2_APP_DIR }}
+
+      # 7️⃣ Restart Spring Boot application safely
+      - name: Restart application on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            pkill -f petclinic || true
+            nohup java -jar ${{ secrets.EC2_APP_DIR }}/*.jar > ${{ secrets.EC2_APP_DIR }}/app.log 2>&1 &
