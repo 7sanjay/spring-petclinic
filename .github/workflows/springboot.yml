@@ -45,5 +45,5 @@ jobs:
             pkill -f 'java -jar' || true
             sleep 2
             JAR_FILE=$(ls -t *.jar | head -n 1)
-            nohup java -jar spring-petclinic-4.0.0-SNAPSHOT.jar --server.port=8084 > app.log 2>&1 &
+            nohup java -jar target/spring-petclinic-4.0.0-SNAPSHOT.jar --server.port=8084 > app.log 2>&1 &
             exit 0
