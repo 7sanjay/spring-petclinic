@@ -11,57 +11,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1️⃣ Checkout the repository
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    # 2️⃣ Set up Java 17
-    - name: Set up JDK 17
-      uses: actions/setup-java@v3
-      with:
-        distribution: temurin
-        java-version: 17
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
-    # 3️⃣ Build the JAR
-    - name: Build with Gradle
-      run: ./gradlew clean build -x test
+      - name: Build Spring Petclinic JAR
+        run: ./mvnw clean package -DskipTests
 
-    # 4️⃣ Ensure SSH target directory exists
-    - name: Ensure remote directory exists
-      uses: appleboy/ssh-action@v0.1.7
-      with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        key: ${{ secrets.SERVER_SSH_KEY }}
-        port: ${{ secrets.SERVER_PORT }}
-        script: mkdir -p /home/ubuntu/app/target
+      - name: Copy JAR to remote server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          source: "target/spring-petclinic-4.0.0-SNAPSHOT.jar"
+          target: "/home/ubuntu/app/target/"
 
-    # 5️⃣ Copy the JAR to the server
-    - name: Copy JAR to remote server
-      uses: appleboy/scp-action@v0.1.4
-      with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        key: ${{ secrets.SERVER_SSH_KEY }}
-        port: ${{ secrets.SERVER_PORT }}
-        source: "target/spring-petclinic-4.0.0-SNAPSHOT.jar"
-        target: "/home/ubuntu/app/target/"
-        overwrite: true
-
-    # 6️⃣ Restart the application on the server
-    - name: Restart Spring Petclinic
-      uses: appleboy/ssh-action@v0.1.7
-      with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        key: ${{ secrets.SERVER_SSH_KEY }}
-        port: ${{ secrets.SERVER_PORT }}
-        script: |
-          cd /home/ubuntu/app
-          # Kill any existing spring-petclinic process
-          pkill -f 'java -jar spring-petclinic' || true
-          sleep 2
-          # Start new instance in background, detached
-          JAR_FILE=target/spring-petclinic-4.0.0-SNAPSHOT.jar
-          nohup setsid java -jar $JAR_FILE --server.port=8084 > /home/ubuntu/app/app.log 2>&1 < /dev/null &
-          echo "Spring Petclinic started on port 8084"
+      - name: Start Spring Petclinic on remote server
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          script: |
+            cd /home/ubuntu/app
+            # Kill any existing spring-petclinic process
+            pkill -f 'java -jar spring-petclinic' || true
+            sleep 2
+            # Start new instance in background, detached
+            JAR_FILE=target/spring-petclinic-4.0.0-SNAPSHOT.jar
+            nohup setsid java -jar $JAR_FILE --server.port=8084 > /home/ubuntu/app/app.log 2>&1 < /dev/null &
+            echo "Spring Petclinic started on port 8084"
